@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAVEFORM // IETYD-2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --green: #00ff88;
+    --green-dim: #00aa55;
+    --green-glow: rgba(0, 255, 136, 0.4);
+    --bg: #020c06;
+    --panel: #04150a;
+    --border: #0a3018;
+    --scan: rgba(0, 255, 136, 0.03);
+    --amber: #ffaa00;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* CRT scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* CRT vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.8) 100%);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  .chassis {
+    background: linear-gradient(160deg, #0a1a10 0%, #040d08 60%, #020a05 100%);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 28px 32px 24px;
+    width: min(820px, 96vw);
+    box-shadow:
+      0 0 0 1px #0a2010,
+      0 0 40px rgba(0,255,136,0.08),
+      inset 0 1px 0 #0d2e18,
+      inset 0 -1px 0 #020805;
+    position: relative;
+  }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .title {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(13px, 2.5vw, 18px);
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 12px var(--green-glow), 0 0 30px rgba(0,255,136,0.2);
+  }
+
+  .title span {
+    color: var(--green-dim);
+    font-weight: 400;
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+  }
+
+  .status-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--green-dim);
+  }
+
+  .led {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #003311;
+    border: 1px solid #005522;
+    transition: all 0.2s;
+    display: inline-block;
+    margin-right: 5px;
+  }
+  .led.active {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green), 0 0 12px var(--green-glow);
+  }
+  .led.amber {
+    background: #553300;
+    border-color: #885500;
+  }
+  .led.amber.active {
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber), 0 0 12px rgba(255,170,0,0.4);
+  }
+
+  /* Screen bezel */
+  .screen-bezel {
+    background: #000;
+    border: 3px solid #071a0e;
+    border-radius: 4px;
+    padding: 3px;
+    box-shadow:
+      inset 0 0 30px rgba(0,0,0,0.8),
+      0 0 0 1px #030d06,
+      0 4px 20px rgba(0,0,0,0.6);
+    position: relative;
+  }
+
+  .screen-bezel::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 2px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #oscilloscope {
+    display: block;
+    width: 100%;
+    height: clamp(180px, 35vw, 280px);
+    background: #000a04;
+    border-radius: 2px;
+  }
+
+  .grid-overlay {
+    position: absolute;
+    inset: 3px;
+    pointer-events: none;
+    z-index: 5;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .grid-overlay svg {
+    width: 100%; height: 100%;
+    opacity: 0.18;
+  }
+
+  /* Controls strip */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .knob-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .knob-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--green-dim);
+    text-transform: uppercase;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 90px;
+    height: 3px;
+    background: linear-gradient(to right, var(--green) var(--pct, 50%), #0a2a14 var(--pct, 50%));
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green-glow);
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+  }
+
+  input[type=range]:hover::-webkit-slider-thumb {
+    box-shadow: 0 0 10px var(--green), 0 0 20px var(--green-glow);
+  }
+
+  .btn {
+    background: var(--panel);
+    color: var(--green);
+    border: 1px solid var(--border);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 7px 14px;
+    cursor: pointer;
+    border-radius: 3px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover {
+    background: #0a2a14;
+    border-color: var(--green-dim);
+    box-shadow: 0 0 8px rgba(0,255,136,0.15);
+  }
+
+  .btn.active {
+    background: #002a12;
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 10px var(--green-glow), inset 0 0 8px rgba(0,255,136,0.1);
+  }
+
+  .divider {
+    width: 1px;
+    height: 36px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  .readout {
+    margin-left: auto;
+    text-align: right;
+    font-size: 10px;
+    color: var(--green-dim);
+    line-height: 1.8;
+  }
+
+  .readout .val {
+    color: var(--green);
+    font-size: 13px;
+    text-shadow: 0 0 8px var(--green-glow);
+  }
+
+  .footer-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    font-size: 9px;
+    color: #1a4425;
+    letter-spacing: 0.08em;
+  }
+
+  /* Permission overlay */
+  #permission-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,10,4,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 50;
+    border-radius: 6px;
+    backdrop-filter: blur(2px);
+  }
+
+  #permission-overlay .big-icon {
+    font-size: 40px;
+    filter: drop-shadow(0 0 12px var(--green-glow));
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.06); }
+  }
+
+  #permission-overlay p {
+    font-size: 12px;
+    color: var(--green-dim);
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+
+  .error-msg {
+    color: #ff4444;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: none;
+  }
+
+  /* mode selector */
+  .mode-btns { display: flex; gap: 6px; }
+
+  /* scan line animation on canvas */
+  @keyframes scanline {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(100%); }
+  }
+</style>
+</head>
+<body>
+
+<div class="chassis">
+  <div class="header">
+    <div class="title">WAVEFORM<br><span>AUDIO OSCILLOSCOPE // IETYD-2 SYS</span></div>
+    <div class="status-row">
+      <div><span class="led" id="led-mic"></span>MIC</div>
+      <div><span class="led amber" id="led-sig"></span>SIGNAL</div>
+      <div><span class="led" id="led-rdy"></span>RDY</div>
+    </div>
+  </div>
+
+  <!-- Screen -->
+  <div class="screen-bezel" style="position:relative">
+    <div class="grid-overlay">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M10 0L0 0 0 10" fill="none" stroke="#00ff88" stroke-width="0.4"/>
+          </pattern>
+        </defs>
+        <rect width="100" height="100" fill="url(#grid)"/>
+        <!-- Center lines -->
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#00ff88" stroke-width="0.7"/>
+        <line x1="50" y1="0" x2="50" y2="100" stroke="#00ff88" stroke-width="0.7"/>
+      </svg>
+    </div>
+    <canvas id="oscilloscope"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="knob-group">
+      <div class="knob-label">Scale</div>
+      <input type="range" id="scale" min="0.5" max="5" step="0.1" value="1.5">
+    </div>
+    <div class="knob-group">
+      <div class="knob-label">Speed</div>
+      <input type="range" id="speed" min="1" max="5" step="0.5" value="2">
+    </div>
+    <div class="knob-group">
+      <div class="knob-label">Smooth</div>
+      <input type="range" id="smooth" min="0" max="0.95" step="0.05" value="0.5">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="mode-btns">
+      <button class="btn active" id="btn-waveform" onclick="setMode('waveform')">WAVE</button>
+      <button class="btn" id="btn-spectrum" onclick="setMode('spectrum')">SPECTRUM</button>
+      <button class="btn" id="btn-lissajous" onclick="setMode('lissajous')">X/Y</button>
+    </div>
+
+    <div class="readout">
+      <div>RMS &nbsp;<span class="val" id="rms-val">---</span></div>
+      <div>PEAK <span class="val" id="peak-val">---</span></div>
+    </div>
+  </div>
+
+  <div class="footer-strip">
+    <span>SG.PHOENIX // EXPERIMENTAL.GRAPHICS</span>
+    <span id="sample-rate-label">FS: ---</span>
+    <span>1024 SPL</span>
+  </div>
+
+  <!-- Permission overlay -->
+  <div id="permission-overlay">
+    <div class="big-icon">🎙️</div>
+    <p>MICROPHONE ACCESS REQUIRED<br>TO INITIALIZE WAVEFORM ENGINE</p>
+    <button class="btn active" onclick="initAudio()">INITIALIZE</button>
+    <div class="error-msg" id="err-msg">DEVICE ACCESS DENIED — CHECK PERMISSIONS</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('oscilloscope');
+const ctx = canvas.getContext('2d');
+
+let analyser, dataArray, sampleRate;
+let animFrame;
+let mode = 'waveform';
+let smoothed = new Float32Array(1024).fill(0);
+let prevSamples = new Float32Array(1024).fill(0);
+
+// Resize canvas to match CSS
+function resize() {
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Slider thumb color update
+document.querySelectorAll('input[type=range]').forEach(r => {
+  function update() {
+    const pct = ((r.value - r.min) / (r.max - r.min)) * 100;
+    r.style.setProperty('--pct', pct + '%');
+  }
+  r.addEventListener('input', update);
+  update();
+});
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btns .btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + m).classList.add('active');
+}
+
+async function initAudio() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0;
+    source.connect(analyser);
+
+    sampleRate = audioCtx.sampleRate;
+    dataArray = new Float32Array(analyser.fftSize);
+    smoothed = new Float32Array(analyser.fftSize).fill(0);
+
+    document.getElementById('permission-overlay').style.display = 'none';
+    document.getElementById('led-mic').classList.add('active');
+    document.getElementById('led-rdy').classList.add('active');
+    document.getElementById('sample-rate-label').textContent = 'FS: ' + (sampleRate / 1000).toFixed(1) + 'kHz';
+
+    draw();
+  } catch(e) {
+    document.getElementById('err-msg').style.display = 'block';
+  }
+}
+
+function draw() {
+  animFrame = requestAnimationFrame(draw);
+
+  const W = canvas.width, H = canvas.height;
+  const scale = parseFloat(document.getElementById('scale').value);
+  const speed = parseFloat(document.getElementById('speed').value);
+  const smoothFactor = parseFloat(document.getElementById('smooth').value);
+
+  // Fade trail
+  ctx.fillStyle = 'rgba(0, 10, 4, 0.35)';
+  ctx.fillRect(0, 0, W, H);
+
+  if (mode === 'waveform') drawWaveform(W, H, scale, smoothFactor);
+  else if (mode === 'spectrum') drawSpectrum(W, H, scale, smoothFactor);
+  else if (mode === 'lissajous') drawLissajous(W, H, scale, smoothFactor);
+
+  // Signal LED
+  const rms = getRMS();
+  document.getElementById('led-sig').classList.toggle('active', rms > 0.005);
+  document.getElementById('rms-val').textContent = (rms * 100).toFixed(1) + '%';
+  document.getElementById('peak-val').textContent = (getPeak() * 100).toFixed(1) + '%';
+}
+
+function getSamples() {
+  analyser.getFloatTimeDomainData(dataArray);
+  return dataArray;
+}
+
+function getFreqData() {
+  const buf = new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(buf);
+  return buf;
+}
+
+function getRMS() {
+  const d = dataArray;
+  let sum = 0;
+  for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+  return Math.sqrt(sum / d.length);
+}
+
+function getPeak() {
+  let peak = 0;
+  for (let i = 0; i < dataArray.length; i++) peak = Math.max(peak, Math.abs(dataArray[i]));
+  return peak;
+}
+
+function drawWaveform(W, H, scale, smoothFactor) {
+  const samples = getSamples();
+  const count = Math.min(samples.length, 1024);
+
+  // Find trigger (zero crossing going positive, like a real scope)
+  let triggerIdx = 0;
+  for (let i = 1; i < count - 1; i++) {
+    if (samples[i - 1] < 0 && samples[i] >= 0) { triggerIdx = i; break; }
+  }
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#00ff88';
+  ctx.shadowBlur = 8;
+
+  const mid = H / 2;
+  const drawCount = Math.min(count - triggerIdx, W);
+
+  for (let i = 0; i < drawCount; i++) {
+    const s = samples[triggerIdx + i];
+    const sx = smoothed[i];
+    smoothed[i] = sx * smoothFactor + s * (1 - smoothFactor);
+
+    const x = (i / drawCount) * W;
+    const y = mid - smoothed[i] * mid * scale;
+
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Bright glow core
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(160,255,200,0.5)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < drawCount; i++) {
+    const x = (i / drawCount) * W;
+    const y = H / 2 - smoothed[i] * H / 2 * scale;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawSpectrum(W, H, scale, smoothFactor) {
+  const freq = getFreqData();
+  const bins = Math.min(freq.length, 512);
+
+  for (let i = 0; i < bins; i++) {
+    const normalized = (freq[i] + 140) / 140; // -140dB..0 → 0..1
+    const s = smoothed[i] || 0;
+    smoothed[i] = s * smoothFactor + normalized * (1 - smoothFactor);
+
+    const x = (i / bins) * W;
+    const barW = W / bins + 0.5;
+    const barH = smoothed[i] * H * scale * 0.5;
+
+    const intensity = smoothed[i];
+    ctx.fillStyle = `rgba(${Math.floor(intensity * 80)}, 255, ${Math.floor(intensity * 120)}, 0.85)`;
+    ctx.shadowColor = '#00ff88';
+    ctx.shadowBlur = intensity > 0.5 ? 6 : 0;
+    ctx.fillRect(x, H - barH, barW, barH);
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawLissajous(W, H, scale, smoothFactor) {
+  const samples = getSamples();
+  const count = samples.length;
+  const half = Math.floor(count / 2);
+
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(0,255,136,0.6)';
+  ctx.lineWidth = 1.2;
+  ctx.shadowColor = '#00ff88';
+  ctx.shadowBlur = 6;
+
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(cx, cy) * 0.85;
+
+  for (let i = 0; i < half; i++) {
+    const x = cx + samples[i] * r * scale;
+    const y = cy + samples[i + half] * r * scale;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+</script>
+</body>
+</html>
